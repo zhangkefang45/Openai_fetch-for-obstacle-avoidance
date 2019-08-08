@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#-*- coding: utf-8 -*-
 import gym
 from openai_fetch.DDPG import DDPG
 import numpy as np
@@ -16,7 +16,7 @@ c4 = 50
 # ############This noise code is copied from openai baseline
 # #########OrnsteinUhlenbeckActionNoise############# Openai Code#########
 # 代表fetch的位置，桌子的位置和长宽高， 障碍物的位置和长宽高
-ENV = {'obs': [0.1749, 0.48, 0, 1.3, 0.75, 0.2, 0.4, 0.6, 0.2, 1.2, 0.85, 0.6, 0.02, 0.02, 0.25]}
+ENV = {'obs': [0.1749, 0.48, 0, 1.3, 0.75, 0.2, 0.4, 0.6, 0.2]}
 # ENV = {'obs': [0.1749, 0.48, 0, 1.3, 0.75, 0.2, 0.4, 0.6, 0.2]}
 class OrnsteinUhlenbeckActionNoise:
     def __init__(self, mu, sigma=0.1, theta=.0, dt=1e-2, x0=None):
@@ -120,42 +120,28 @@ if __name__ == "__main__":
     root = [0, -1.0, .0, 1.5, .0, 1.0, .0]
     rot = root.copy()
     OBS = np.array(ENV['obs'])
-    box = np.array([1.28305097, 0.63599385, 0.60611947])
-    '''
-    载入专家数据
-    '''
-    # for f in range(200):
-    #     try:
-    #         path = np.load('data/path' + str(f) + '.npy')
-    #         path = np.array(path)
-    #         print(f)
-    #         rot = np.array(root)
-    #         env.test_set_joint(root)
-    #         for ep in range(2):
-    #             for pa in path:
-    #                 for _ in range(10):
-    #                     tmp = rot+(pa/10)
-    #                     obs1, _, _, _ = env.test_step(pa / 10)
-    #                     # env.render()
-    #                     r = -np.sqrt(np.sum(np.square(Box_position -obs1['achieved_goal']))) + 1
-    #                     rl.store_Dtransition(np.concatenate((rot, OBS, box), axis=0).reshape(1, -1), pa, r,
-    #                                         np.concatenate((tmp, OBS, box), axis=0).reshape(1, -1))
-    #                     rot = tmp
-    #     except FileNotFoundError:
-    #          continue
-    # print(rl.Dmemory_counter)
-    # for f in range(10000):
-    #     rl.learn()
+    box = np.array([1.35305097, 0.63599385, 0.60611947])
     # 主循环
     acc = 0
+    name = "obstacle02"
+    # 获取障碍物的随机范围
+    xyz_range = env.get_object_range(name)
+    print(xyz_range)
     for i in range(1, MAX_EPISODES):
-        obs = env.reset()
-        # obs = env.fix_target(box)
+        # obs = env.reset()
+        obs = env.fix_target(box)
         env.test_set_joint(root)
+        env.random_set_object(name, xyz_range)
+        while np.sqrt(np.sum(np.square(env.get_object(name) - box))) <= 0.1:
+            env.random_set_object(name, xyz_range)
         state = obs.copy()
         Box_position = state['desired_goal'].reshape(1, -1)
         print("Box_Position:", Box_position)
-
+        env_obs = np.append(np.array(ENV['obs']), (env.get_object(name)))
+        print(env.get_object(name))
+        # print(env_obs)
+        env_obs = np.append(env_obs, np.array([0.04, 0.04, 0.04]))
+        # print(env_obs)
         if i % 50 == 0:
             print("\n------------------Episode:{0}------------------".format(i))
             rl.save_mode()
@@ -166,8 +152,7 @@ if __name__ == "__main__":
         while True:
             # ------------ choose action ------------
             s = np.array(env.test_get_joint())
-            # now_action = np.array([s[0], s[1], s[3]]).reshape(1, -1)
-            x = np.concatenate((s, ENV['obs'], Box_position[0]), axis=0)
+            x = np.concatenate((s, env_obs, Box_position[0]), axis=0)
             noise = np.random.normal(loc=0, scale=var, size=7)
             action = rl.choose_action(x)
             action += noise
@@ -186,13 +171,7 @@ if __name__ == "__main__":
                     # print(next_state['achieved_goal'])
                     next_state, _, done, info = env.test_step(-action / 30)
                     break
-                # if np.sqrt(np.sum(np.square(Box_position - next_state['achieved_goal']))) <= 0.05:
-                #     ac = env.test_get_joint() - s
-                #     break
-            # print(next_state['achieved_goal'])
             s_next = np.array(env.test_get_joint())
-            # action_after = np.array([s_next[0], s_next[1], s_next[3]]).reshape(1, -1)
-            # L1dis = np.sum(Box_position - next_state['achieved_goal']).copy() # L1 distance
             dis = np.sqrt(np.sum(np.square(Box_position - next_state['achieved_goal']))).copy() # L2 distance
             a = np.sqrt(np.sum(np.square(action))).copy()
             if dis <= 0.05 and not collision:
@@ -202,7 +181,7 @@ if __name__ == "__main__":
             r = -c1*huber_loss(dis) - c2*a - c3*int(collision)
             # r = -dis - int(collision) * 2
             rw += r
-            x1 = np.array(np.concatenate((s_next, ENV['obs'], Box_position[0]), axis=0).reshape(1, -1))
+            x1 = np.array(np.concatenate((s_next, env_obs, Box_position[0]), axis=0).reshape(1, -1))
             done = 1 if success or st==MAX_EP_STEPS else 0
             rl.store_transition(x, action, r, x1, done)
             if collision:
@@ -224,3 +203,17 @@ if __name__ == "__main__":
         # if i%1000 == 0:
         #     plot(MAX_EPISODES, total_rewards, acc_epi)
     plot(MAX_EPISODES, total_rewards, acc_epi)
+
+
+# import gym
+# #
+# if __name__ == "__main__":
+#     env = gym.make("FetchReach-v1")
+#     name = "obstacle02"
+#     xyz_range = env.get_object_range(name)
+#     # print(env.get_object(name))
+#     print(env.get_object_range(name))
+#     for _ in range(100):
+#         env.random_set_object(name, xyz_range)
+#         env.render()
+
